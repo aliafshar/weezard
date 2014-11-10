@@ -1,7 +1,6 @@
 // Package weezard asks the user questions on standard IO and stores answers.
-//
-// Quesiton metadata is provided as struct field tags, similar to how they are
-// used by `json`, etc.
+// Question metadata is provided as struct field tags, similar to how they are
+// used by json, etc.
 package weezard
 
 import (
@@ -14,8 +13,7 @@ import (
 )
 
 // Template contains the template used when displaying question prompts.
-//
-// The variable that is passed on execution is a *Question
+// A *Question is passed to it for execution.
 var Template = "{{.Usage|.Bold}} (default={{.Default|.Blue}}) > "
 
 // Question is a single promptable unit.
@@ -142,9 +140,7 @@ func AskQuestions(qs []*Question) error {
 }
 
 // Ask prompts the user for all answers in the given struct, and sets the
-// appropriate values from the answers.
-//
-// v must be a non-nil pointer to a struct.
+// appropriate values from the answers. v must be a non-nil pointer to a struct.
 func Ask(v interface{}) error {
 	qs, err := QuestionsFor(v)
 	if err != nil {
