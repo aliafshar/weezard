@@ -4,8 +4,8 @@
 package weezard
 
 import (
+	"bufio"
 	"errors"
-	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -19,14 +19,14 @@ var Template = "{{.Usage|.Bold}} (default={{.Default|.Blue}}) > "
 // Question is a single promptable unit.
 type Question struct {
 
-  // Usage is the content of the question.
-	Usage   string
+	// Usage is the content of the question.
+	Usage string
 
-  // Default is the default answer.
+	// Default is the default answer.
 	Default string
 
-  // Set is called with an answer.
-  Set     func(string)
+	// Set is called with an answer.
+	Set func(string)
 }
 
 // Bold generates ansi-escaped bold text.
@@ -103,26 +103,41 @@ func QuestionsFor(s interface{}) ([]*Question, error) {
 	return qs, nil
 }
 
+// readln reads a whole line from a reader.
+func readln() (string, error) {
+	r := bufio.NewReader(os.Stdin)
+	var (
+		isPrefix bool  = true
+		err      error = nil
+		line, ln []byte
+	)
+	for isPrefix && err == nil {
+		line, isPrefix, err = r.ReadLine()
+		ln = append(ln, line...)
+	}
+	return string(ln), err
+}
+
 // AskQuestion prompts the user for a single question, and calls the provided
 // setter, and returns the answer.
 func AskQuestion(q *Question) (string, error) {
 	var s string
 	for s == "" {
 		tmpl, err := template.New("question").Parse(Template)
-		if err != nil {
-			return "", err
-		}
 		tmpl.Execute(os.Stdout, q)
-		_, err = fmt.Scanln(&s)
-		if err != nil && err.Error() != "unexpected newline" {
-			return "", err
+		if err != nil {
+			return s, err
+		}
+		s, err = readln()
+		if err != nil {
+			return s, err
 		}
 		if s == "" {
 			s = q.Default
 		}
-    if q.Set != nil {
-      q.Set(s)
-    }
+		if q.Set != nil {
+			q.Set(s)
+		}
 	}
 	return s, nil
 }
@@ -136,7 +151,7 @@ func AskQuestions(qs []*Question) error {
 			return err
 		}
 	}
-  return nil
+	return nil
 }
 
 // Ask prompts the user for all answers in the given struct, and sets the
@@ -146,5 +161,5 @@ func Ask(v interface{}) error {
 	if err != nil {
 		return err
 	}
-  return AskQuestions(qs)
+	return AskQuestions(qs)
 }
