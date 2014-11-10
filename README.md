@@ -25,8 +25,14 @@ An example will make it more clear, perhaps.
       if err != nil {
         log.Fatalln(err)
       }
-      log.Println(u)
+      log.Printf("%#v", u)
     }
+
+This looks like:
+
+    What is your name? Name [default=]Ali
+    What is your date of birth? DateOfBirth [default=]1999-09-09
+    2014/11/09 17:32:47 &main.UserInfo{Name:"Ali", DateOfBirth:"1999-09-09"}
 
 The tag format is:
 
