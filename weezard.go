@@ -1,21 +1,48 @@
-// Package weezard asks the user questions on the command line and takes
-// answers.
+// Package weezard asks the user questions on standard IO and stores answers.
+//
+// Quesiton metadata is provided as struct field tags, similar to how they are
+// used by `json`, etc.
 package weezard
 
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"reflect"
 	"strings"
 	"text/template"
 )
 
-var Template = "{{.Usage}} {{.Name}} [default={{.Default}}]"
+// Template contains the template used when displaying question prompts.
+//
+// The variable that is passed on execution is a *Question
+var Template = "{{.Usage|.Bold}} (default={{.Default|.Blue}}) > "
+
+// Question is a single promptable unit.
+type Question struct {
+
+  // Usage is the content of the question.
+	Usage   string
+
+  // Default is the default answer.
+	Default string
+
+  // Set is called with an answer.
+  Set     func(string)
+}
+
+// Bold generates ansi-escaped bold text.
+func (q *Question) Bold(str string) string {
+	return "\033[1m" + str + "\033[0m"
+}
+
+// Blue generates ansi-escaped blue text.
+func (q *Question) Blue(str string) string {
+	return q.Bold("\033[34m" + str + "\033[0m")
+}
 
 // parseTag extracts required metadata from a field's struct tag
-func parseTag(tag string) (*question, error) {
+func parseTag(tag string) (*Question, error) {
 	var ts []string
 	if tag == "" {
 		ts = []string{"", ""}
@@ -25,19 +52,22 @@ func parseTag(tag string) (*question, error) {
 			return nil, errors.New("Must provide <default>,<question>")
 		}
 	}
-	q := &question{Usage: ts[1], Default: ts[0]}
+	q := &Question{Usage: ts[1], Default: ts[0]}
 	return q, nil
 }
 
 // newQuestion creates a question from a struct/value field pair.
-func newQuestion(tfield reflect.StructField, vfield reflect.Value) (*question, error) {
+func newQuestion(tfield reflect.StructField, setter func(string)) (*Question, error) {
 	tag := tfield.Tag.Get("question")
 	q, err := parseTag(tag)
 	if err != nil {
 		return nil, err
 	}
-	q.field = vfield
-	q.Name = tfield.Name
+	q.Set = setter
+	// For fields with no tag
+	if q.Usage == "" {
+		q.Usage = tfield.Name + "?"
+	}
 	return q, nil
 }
 
@@ -50,9 +80,9 @@ func reflectIfPointer(s interface{}) (reflect.Value, error) {
 	return v, nil
 }
 
-// newQuestions builds a list of questions from a non-nil struct pointer.
-func newQuestions(s interface{}) ([]*question, error) {
-	qs := []*question{}
+// QuestionsFor builds a list of questions from a non-nil struct pointer.
+func QuestionsFor(s interface{}) ([]*Question, error) {
+	qs := []*Question{}
 	pv, err := reflectIfPointer(s)
 	if err != nil {
 		return nil, err
@@ -66,7 +96,7 @@ func newQuestions(s interface{}) ([]*question, error) {
 			// Private fields
 			continue
 		}
-		q, err := newQuestion(tfield, vfield)
+		q, err := newQuestion(tfield, vfield.SetString)
 		if err != nil {
 			return qs, err
 		}
@@ -75,55 +105,50 @@ func newQuestions(s interface{}) ([]*question, error) {
 	return qs, nil
 }
 
-type question struct {
-	Name    string
-	Usage   string
-	Default string
-	field   reflect.Value
-}
-
-func (q *question) set(v string) {
-	q.field.SetString(v)
-}
-
-// bold generates ansi-escaped bold text.
-func bold(str string) string {
-	return "\033[1m" + str + "\033[0m"
-}
-
-// blue generates ansi-escaped blue text.
-func blue(str string) string {
-	return bold("\033[34m" + str + "\033[0m")
-}
-
-func askQuestion(q *question) string {
+// AskQuestion prompts the user for a single question, and calls the provided
+// setter, and returns the answer.
+func AskQuestion(q *Question) (string, error) {
 	var s string
 	for s == "" {
-		// fmt.Printf("%v %v [default=%v]>> ", q.Usage, bold(q.Name), blue(q.Default))
 		tmpl, err := template.New("question").Parse(Template)
 		if err != nil {
-			log.Fatalln("Bad template")
+			return "", err
 		}
 		tmpl.Execute(os.Stdout, q)
 		_, err = fmt.Scanln(&s)
 		if err != nil && err.Error() != "unexpected newline" {
-			log.Fatalln("Bad scan", err)
+			return "", err
 		}
 		if s == "" {
 			s = q.Default
 		}
+    if q.Set != nil {
+      q.Set(s)
+    }
 	}
-	return s
+	return s, nil
 }
 
-func Ask(s interface{}) error {
-	qs, err := newQuestions(s)
+// AskQuestions prompts the user for all passed questions, and sets the
+// appropriate values from the answers.
+func AskQuestions(qs []*Question) error {
+	for _, q := range qs {
+		_, err := AskQuestion(q)
+		if err != nil {
+			return err
+		}
+	}
+  return nil
+}
+
+// Ask prompts the user for all answers in the given struct, and sets the
+// appropriate values from the answers.
+//
+// v must be a non-nil pointer to a struct.
+func Ask(v interface{}) error {
+	qs, err := QuestionsFor(v)
 	if err != nil {
 		return err
 	}
-	for _, q := range qs {
-		a := askQuestion(q)
-		q.set(a)
-	}
-	return nil
+  return AskQuestions(qs)
 }
